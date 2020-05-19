@@ -38,11 +38,36 @@
 #include <sys/time.h>
 #include <time.h>
 
+#ifdef NANOS_INSTRUMENTATION_ENABLED
+#include <extrae_types.h>
+#include <mpitrace_user_events.h>
+
+#define extrae_size_t unsigned int
+
+extern "C" {
+   unsigned int nanos_ompitrace_get_max_threads ( void );
+   unsigned int nanos_ompitrace_get_thread_num ( void );
+   void nanos_extrae_instrumentation_barrier( void );
+   unsigned int nanos_extrae_node_id();
+   unsigned int nanos_extrae_num_nodes();
+   void         nanos_ompitrace_instrumentation_barrier();
+   void         Extrae_change_num_threads (unsigned nthreads);
+}
+#endif
+
 namespace {
     nanos::Lock lock;
 }
 
 namespace nanos {
+
+#ifdef NANOS_INSTRUMENTATION_ENABLED
+    const extrae_type_t _eventState      = 9000000;   /*!< event coding state changes */
+    const extrae_type_t _eventPtPStart   = 9000001;   /*!< event coding comm start */
+    const extrae_type_t _eventPtPEnd     = 9000002;   /*!< event coding comm end */
+    const extrae_type_t _eventSubState   = 9000004;   /*!< event coding sub-state changes */
+    const extrae_type_t _eventBase       = 9200000;   /*!< event base (used in key/value pairs) */
+#endif
 
 enum { concurrent_min_id = 1000000 };
 static unsigned int cluster_id = 1;
@@ -58,6 +83,17 @@ private:
     double _min_time;
     double _total_time;
     double _min_diam;
+
+    std::string                                    _listOfTraceFileNames;
+    std::string                                    _traceDirectory;        /*<< Extrae directory: EXTRAE_DIR */
+    std::string                                    _traceFinalDirectory;   /*<< Extrae final directory: EXTRAE_FINAL_DIR */
+    std::string                                    _traceParaverDirectory; /*<< Paraver output files directory */
+    std::string                                    _traceFileName_PRV;     /*<< Paraver: file.prv */
+    std::string                                    _traceFileName_PCF;     /*<< Paraver: file.pcf */
+    std::string                                    _traceFileName_ROW;     /*<< Paraver: file.row */
+    std::string                                    _binFileName;           /*<< Binnary file name */
+    int                                            _maxThreads;
+    Lock                                           _extrae_lock;
 
 #ifdef NANOS_INSTRUMENTATION_ENABLED
     int64_t _next_tw_id;
@@ -429,8 +465,8 @@ private:
 public:
     // constructor
     InstrumentationTGDump() : Instrumentation(),
-                                          _graph_nodes(), _funct_id_to_decl_map(),
-                                          _min_time(HUGE_VAL), _total_time(0.0), _min_diam(1.0)
+                              _graph_nodes(), _funct_id_to_decl_map(),
+                              _min_time(HUGE_VAL), _total_time(0.0), _min_diam(1.0)
     {}
 
     // destructor
@@ -451,9 +487,9 @@ public:
 
     // constructor
     InstrumentationTGDump() : Instrumentation(*new InstrumentationContextDisabled()),
-                                          _graph_nodes(), _funct_id_to_decl_map(),
-                                          _min_time(HUGE_VAL), _total_time(0.0), _min_diam(1.0),
-                                          _next_tw_id(0), _next_conc_id(0)
+                              _graph_nodes(), _funct_id_to_decl_map(),
+                              _min_time(HUGE_VAL), _total_time(0.0), _min_diam(1.0),
+                              _next_tw_id(0), _next_conc_id(0)
     {}
 
     // destructor
@@ -537,11 +573,86 @@ public:
         // TODO
         // Print the summarized graph
 //         print_summarized_graph(file_name);
+
+//====[EXTRAE INIT]====//
+
+        /* check environment variable: EXTRAE_ON */
+        char *mpi_trace_on = getenv("EXTRAE_ON");
+        char *mpi_trace_dir;
+        char *mpi_trace_final_dir;
+
+        /* if MPITRAE_ON not defined, active it */
+        if ( mpi_trace_on == NULL ) {
+            mpi_trace_on = NEW char[12];
+            strcpy(mpi_trace_on, "EXTRAE_ON=1");
+            putenv (mpi_trace_on);
+        }
+
+        /* check environment variable: EXTRAE_FINAL_DIR */
+        mpi_trace_final_dir = getenv("EXTRAE_FINAL_DIR");
+        /* if EXTRAE_FINAL_DIR not defined, active it */
+        if ( mpi_trace_final_dir == NULL ) {
+            mpi_trace_final_dir = NEW char[3];
+            strcpy(mpi_trace_final_dir, "./");
+        }
+
+        /* check environment variable: EXTRAE_DIR */
+        mpi_trace_dir = getenv("EXTRAE_DIR");
+        /* if EXTRAE_DIR not defined, active it */
+        if ( mpi_trace_dir == NULL ) {
+            mpi_trace_dir = NEW char[3];
+            strcpy(mpi_trace_dir, "./");
+        }
+
+        _traceDirectory = mpi_trace_dir;
+        _traceFinalDirectory = mpi_trace_final_dir;
+        _listOfTraceFileNames = _traceFinalDirectory + "/TRACE.mpits";
+
+        // Common thread information
+        Extrae_set_threadid_function ( nanos_ompitrace_get_thread_num );
+        Extrae_set_numthreads_function ( nanos_ompitrace_get_max_threads );
+
+        // Cluster specific information
+        if ( sys.usingCluster() ) {
+            Extrae_set_taskid_function ( nanos_extrae_node_id );
+            Extrae_set_numtasks_function ( nanos_extrae_num_nodes );
+            Extrae_set_barrier_tasks_function ( nanos_ompitrace_instrumentation_barrier );
+        }
+#ifdef HAVE_MPI_H
+        char *offload_trace_on = getenv("NX_OFFLOAD_INSTRUMENTATION");
+        if (offload_trace_on != NULL){ 
+            //MPI plugin init will initialize extrae...
+            sys.loadPlugin("arch-mpi");
+        } else {
+#endif
+            /* Regular SMP OMPItrace initialization */      
+            OMPItrace_init();      
+#ifdef HAVE_MPI_H
+        }
+#endif
+
+        Extrae_register_codelocation_type( 9200011, 9200021, "User Function Name", "User Function Location" );
+
+        Extrae_register_stacked_type( (extrae_type_t) _eventState );
+        InstrumentationDictionary::ConstKeyMapIterator itK;
+        InstrumentationDictionary *iD = sys.getInstrumentation()->getInstrumentationDictionary();
+
+        /* Generating key/value events */
+        for ( itK = iD->beginKeyMap(); itK != iD->endKeyMap(); itK++ ) {
+            InstrumentationKeyDescriptor *kD = itK->second;
+            if (kD->isStacked()) {
+                Extrae_register_stacked_type( (extrae_type_t) _eventBase+kD->getId() );
+            }
+        }
+
+        /* Keep current number of threads */
+        _maxThreads = sys.getSMPPlugin()->getNumThreads();
+        Extrae_change_num_threads( _maxThreads );
     }
-
-    void disable(void) {}
-
-    void enable(void) {}
+    
+    void enable( void ) { Extrae_restart(); }
+    
+    void disable( void ) { Extrae_shutdown(); }
 
     static double get_current_time()
     {
@@ -549,13 +660,14 @@ public:
         gettimeofday(&tv,0);
         return ((double) tv.tv_sec*1000000L) + ((double)tv.tv_usec);
     }
-
+    
     void addResumeTask(WorkDescriptor &w)
     {
         Node* n = find_node_from_wd_id(w.getId());
         if(n != NULL) {
             n->set_last_time(get_current_time());
         }
+        Extrae_resume_virtual_thread ( w.getId() );
     }
 
     void addSuspendTask(WorkDescriptor &w, bool last)
@@ -565,6 +677,7 @@ public:
             double time = (double) get_current_time() - n->get_last_time();
             n->add_total_time(time);
         }
+        Extrae_suspend_virtual_thread ();
     }
 
     void addEventList(unsigned int count, Event *events)
@@ -748,6 +861,15 @@ public:
     void threadStart(BaseThread &thread) {}
 
     void threadFinish (BaseThread &thread) {}
+
+    void incrementMaxThreads( void )
+    {
+       // Extrae_change_num_threads involves memory allocation and file creation,
+       // thus the function call must be lock-protected
+       _extrae_lock.acquire();
+       Extrae_change_num_threads( ++_maxThreads );
+       _extrae_lock.release();
+    }
 
 #endif
 
