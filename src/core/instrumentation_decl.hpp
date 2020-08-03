@@ -678,6 +678,17 @@ namespace nanos {
             /* 73 */ registerEventKey("dep-overlap-start", "Beginning of memory range involved with a dependency", true, EVENT_DEVELOPER );
             /* 74 */ registerEventKey("dep-overlap-end", "End of memory range involved with a dependency", true, EVENT_DEVELOPER );
 
+            /* 75 */ registerEventKey("task-cost-addsub-int", "Task cost considering integer additions and subtractions");
+            /* 76 */ registerEventKey("task-cost-mul-int", "Task cost considering integer multiplications ");
+            /* 77 */ registerEventKey("task-cost-div-int", "Task cost considering integer divisions");
+            /* 78 */ registerEventKey("task-cost-addsub-fp", "Task cost considering floating point additions and subtractions");
+            /* 79 */ registerEventKey("task-cost-mul-fp", "Task cost considering floating point multiplications");
+            /* 80 */ registerEventKey("task-cost-div-fp", "Task cost considering floating point divisions");
+            /* 81 */ registerEventKey("task-cost-addsub-db", "Task cost considering double additions and subtractions");
+            /* 82 */ registerEventKey("task-cost-mul-db", "Task cost considering double multiplications");
+            /* 83 */ registerEventKey("task-cost-div-db", "Task cost considering double divisions");
+            /* 84 */ registerEventKey("loop-iteration-count", "Number of iterations of a loop");
+
             /* ** */ registerEventKey("debug","Debug Key", true, EVENT_ADVANCED ); /* Keep this key as the last one */
          }
 
