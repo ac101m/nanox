@@ -158,6 +158,7 @@ namespace nanos {
 
         int _papi_event_set;
         std::vector<std::pair<int, long long> > _papi_counters;   // first - event id, second - counter value
+        std::vector<std::pair<std::string, long long> > _task_cost;
 
         std::vector<NodeIO> _io;
 
@@ -167,7 +168,10 @@ namespace nanos {
               _entry_edges( ), _exit_edges( ),
               _total_time( 0.0 ), _last_time( 0.0 ), _printed( false ), _critical( false ),
               _papi_event_set( PAPI_NULL ), _papi_counters( )
-        {}
+        {
+           // (Add/sub, mul, div) x (int, sp, dp)
+            _task_cost.reserve(9);
+        }
 
         int64_t get_wd_id() const {return _wd_id;}
         int64_t get_funct_id() const {return _func_id;}
@@ -177,6 +181,7 @@ namespace nanos {
         void set_last_time(double time) {_last_time = time;}
         double get_total_time() const {return _total_time;}
         std::vector<std::pair<int, long long> > get_perf_counters() const {return _papi_counters;}
+        std::vector<std::pair<std::string, long long> > get_task_cost() const {return _task_cost;}
         std::vector<NodeIO> get_io() const {return _io;}
 
         void add_io(NodeIO const& io) {

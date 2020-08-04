@@ -562,6 +562,10 @@ private:
             printJsonAttributeArray(indent + "  ", "papi_counters", papi_counter_data_printable, ss);
             ss << ",\n";
 
+            std::vector<std::pair<std::string, long long> > task_cost_data_printable = n->get_task_cost();
+            printJsonAttributeArray(indent + "  ", "task_cost", task_cost_data_printable, ss);
+            ss << ",\n";
+
             // Get nested exits
             std::vector<Edge*> const& exits = n->get_exits();
             std::vector<Edge*> nested_exits;
@@ -973,6 +977,16 @@ public:
         static const nanos_event_key_t wd_num_deps = iD->getEventKey("wd-num-deps");
         static const nanos_event_key_t wd_deps_ptr = iD->getEventKey("wd-deps-ptr");
 
+        static const nanos_event_key_t task_cost_addsub_int = iD->getEventKey("task-cost-addsub-int");
+        static const nanos_event_key_t task_cost_mul_int = iD->getEventKey("task-cost-mul-int");
+        static const nanos_event_key_t task_cost_div_int = iD->getEventKey("task-cost-div-int");
+        static const nanos_event_key_t task_cost_addsub_fp = iD->getEventKey("task-cost-addsub-fp");
+        static const nanos_event_key_t task_cost_mul_fp = iD->getEventKey("task-cost-mul-fp");
+        static const nanos_event_key_t task_cost_div_fp = iD->getEventKey("task-cost-div-fp");
+        static const nanos_event_key_t task_cost_addsub_db = iD->getEventKey("task-cost-addsub-db");
+        static const nanos_event_key_t task_cost_mul_db = iD->getEventKey("task-cost-mul-db");
+        static const nanos_event_key_t task_cost_div_db = iD->getEventKey("task-cost-div-db");
+
         // Get the node corresponding to the wd_id calling this function
         // This node won't exist if the calling wd corresponds to that of the master thread
         int64_t current_wd_id = getMyWDId();
@@ -981,7 +995,44 @@ public:
         unsigned int i;
         for(i=0; i<count; i++) {
             Event &e = events[i];
-            if (e.getKey() == create_wd_ptr)
+
+            if (e.getKey() == task_cost_addsub_int)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("addsub_int", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_mul_int)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("mul_int", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_div_int)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("div_int", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_addsub_fp)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("addsub_sp", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_mul_fp)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("mul_sp", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_div_fp)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("div_sp", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_addsub_db)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("addsub_dp", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_mul_db)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("mul_dp", e.getValue()));
+            }
+            else if (e.getKey() == task_cost_div_db)
+            {
+                current_parent->_task_cost.push_back(std::make_pair("div_dp", e.getValue()));
+            }
+            else if (e.getKey() == create_wd_ptr)
             {  // A wd is submitted => create a new node
 
                 // Get the identifier of the task function
